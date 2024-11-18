@@ -1,9 +1,20 @@
 #bash
+FORCE_INSERT_TRANSCODE="-init_hw_device videotoolbox=vt -hwaccel videotoolbox -hwaccel_output_format videotoolbox_vld -noautorotate"
+
+log() {
+    local message="${1}"
+    local level="${2:-DBG}"  
+
+    # Write the log message with a timestamp and level
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$level] $message"
+}
+
 format_arguments() {
     local raw_args="$1"
     local formatted_args=""
     local flag_regex='\ -[^ |0-9][^ ]*'  
     local flag_regex_first='^-[^ |0-9][^ ]*'
+    local insert_position=0
 
     # Handle the first flag (if any)
     if [[ "$raw_args" =~ $flag_regex_first ]]; then
@@ -19,6 +30,10 @@ format_arguments() {
             echo "Next flag: $next_flag"
             local params="${raw_args%%$next_flag*}"  # Everything before the next flag
             params="${params#"${params%%[! ]*}"}"
+
+            if [[ "$next_flag" == *"-b:v"* ]]; then 
+                streaming=true
+            fi
             
 
             # Quote the parameters if necessary
@@ -29,6 +44,15 @@ format_arguments() {
                 #     formatted_args+="$params "
                 # fi
                 formatted_args+="\"$params\" "
+                if [[ "$params" == "copy" ]]; then
+                    remuxing=true
+                    log "detected copy before $next_flag"
+                fi
+            fi
+
+            if [[ "$next_flag" == *"-canvas_size"* ]]; then
+                insert_position=${#formatted_args}
+                echo "insert_position: $insert_position"
             fi
 
             # Add the next flag to the formatted output
@@ -42,9 +66,23 @@ format_arguments() {
             else
                 formatted_args+="$raw_args "
             fi
+            # formatted_args+="\"$raw_args\" "
+            if [[ "$raw_args" == "copy" ]]; then
+                remuxing=true
+            fi
             break
         fi
     done
+
+    # log "streaming: $streaming, remuxing: $remuxing"
+    if [[ "$streaming" == true ]]; then
+        if [[ "$remuxing" == true ]]; then
+            :
+        else
+            log "This is transcoding, inserting flags to force enable apple hardware acceleration"
+            formatted_args="${formatted_args:0:$insert_position}$FORCE_INSERT_TRANSCODE ${formatted_args:$insert_position}"
+        fi
+    fi
 
     echo "$formatted_args"
 }

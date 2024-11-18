@@ -10,6 +10,8 @@ MACOS_PATH_MAP="${MACOS_PATH_MAP}"
 
 MACOS_HOST="192.168.50.99"
 
+# FORCE_INSERT_TRANSCODE="-init_hw_device videotoolbox=vt -hwaccel videotoolbox -hwaccel_output_format videotoolbox_vld -noautorotate"
+
 
 # Debug options
 CALL_ORIGINAL_ONLY=false  
@@ -92,7 +94,7 @@ execute_macos_ffmpeg() {
 
     local macos_cmd_final="$MACOS_FFMPEG $formatted_args"
 
-    log "Forwarding FFmpeg Command to macOS: $formatted_args"
+    log "Forwarding FFmpeg Command to macOS: $macos_cmd_final"
 
     sshpass -p "$MACOS_PASSWORD" ssh -o StrictHostKeyChecking=no "$MACOS_USER@$MACOS_HOST" \
         "$MACOS_FFMPEG $formatted_args | tee -a $MACOS_LOG_FILE" \
@@ -109,6 +111,7 @@ format_arguments() {
     local formatted_args=""
     local flag_regex='\ -[^ |0-9][^ ]*'  
     local flag_regex_first='^-[^ |0-9][^ ]*'
+    local insert_position=0
 
     # Handle the first flag (if any)
     if [[ "$raw_args" =~ $flag_regex_first ]]; then
@@ -124,6 +127,10 @@ format_arguments() {
             # echo "Next flag: $next_flag"
             local params="${raw_args%%$next_flag*}"  # Everything before the next flag
             params="${params#"${params%%[! ]*}"}"
+
+            if [[ "$next_flag" == *"-b:v"* ]]; then 
+                streaming=true
+            fi
             
 
             # Quote the parameters if necessary
@@ -134,6 +141,15 @@ format_arguments() {
                 #     formatted_args+="$params "
                 # fi
                 formatted_args+="\"$params\" "
+                if [[ "$params" == "copy" ]]; then
+                    remuxing=true
+                    log "detected copy before $next_flag"
+                fi
+            fi
+
+            if [[ "$next_flag" == *"-canvas_size"* ]]; then
+                insert_position=${#formatted_args}
+                # echo "insert_position: $insert_position"
             fi
 
             # Add the next flag to the formatted output
@@ -147,9 +163,23 @@ format_arguments() {
             else
                 formatted_args+="$raw_args "
             fi
+            # formatted_args+="\"$raw_args\" "
+            if [[ "$raw_args" == "copy" ]]; then
+                remuxing=true
+            fi
             break
         fi
     done
+
+    # log "streaming: $streaming, remuxing: $remuxing"
+    if [[ "$streaming" == true ]]; then
+        if [[ "$remuxing" == true ]]; then
+            :
+        else
+            log "This is transcoding, inserting flags to force enable apple hardware acceleration"
+            formatted_args="${formatted_args:0:$insert_position}$FORCE_INSERT_TRANSCODE ${formatted_args:$insert_position}"
+        fi
+    fi
 
     echo "$formatted_args"
 }
