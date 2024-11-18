@@ -72,7 +72,7 @@ execute_local_ffmpeg() {
 
 # Check if forwarding to macOS is available
 is_forwarding_available() {
-    # return 0
+    return 0
     if [ -z "$MACOS_USER" ] || [ -z "$MACOS_PASSWORD" ] || [ -z "$MACOS_PATH_MAP" ]; then
         return 1  
     fi
@@ -80,18 +80,76 @@ is_forwarding_available() {
 }
 
 execute_macos_ffmpeg() {
-    local args="$1"
-    local macos_cmd_final="-p $MACOS_PASSWORD ssh -o StrictHostKeyChecking=no $MACOS_USER@$MACOS_HOST $MACOS_FFMPEG $args"
-    # log "Forwarding FFmpeg Command to macOS: $macos_cmd_final"
-    log "Forwarding FFmpeg Command to macOS: $args"
+    local raw_args="$1"
 
-    
-    sshpass -p "$MACOS_PASSWORD" ssh -o StrictHostKeyChecking=no "$MACOS_USER@$MACOS_HOST" "$MACOS_FFMPEG $args | tee -a /Users/zzy/Desktop/ffmpeg_call_out.log" 1>&1 2>&2 
-    log "FFmpeg call to macOS exited with $?"
-    exit $?  
+    log "Transformed ffmpeg args: $raw_args"
+
+    # Format the arguments based on flags
+    local formatted_args
+    formatted_args=$(format_arguments "$raw_args")
+
+    local macos_cmd_final="$MACOS_FFMPEG $formatted_args"
+
+    log "Forwarding FFmpeg Command to macOS: $formatted_args"
+
+    sshpass -p "$MACOS_PASSWORD" ssh -o StrictHostKeyChecking=no "$MACOS_USER@$MACOS_HOST" \
+        "$MACOS_FFMPEG $formatted_args | tee -a /Users/zzy/Desktop/ffmpeg_call_out.log" \
+        1>&1 2>&2
+
+    local exit_code=$?
+    log "FFmpeg call to macOS exited with $exit_code"
+    exit $exit_code
 }
 
 
+format_arguments() {
+    local raw_args="$1"
+    local formatted_args=""
+    local flag_regex='\ -[^ |0-9][^ ]*'  
+    local flag_regex_first='^-[^ |0-9][^ ]*'
+
+    # Handle the first flag (if any)
+    if [[ "$raw_args" =~ $flag_regex_first ]]; then
+        local first_flag="${BASH_REMATCH[0]}"
+        formatted_args+="$first_flag "
+        raw_args="${raw_args#*$first_flag}"  # Remove the matched first flag
+    fi
+
+    while [[ -n "$raw_args" ]]; do
+        # Match the next flag
+        if [[ "$raw_args" =~ $flag_regex ]]; then
+            local next_flag="${BASH_REMATCH[0]}"
+            
+            local params="${raw_args%%$next_flag*}"  # Everything before the next flag
+            params="${params#"${params%%[! ]*}"}"
+            
+
+            # Quote the parameters if necessary
+            if [[ -n "$params" ]]; then
+                if [[ "$params" == *" "* ]]; then
+                    formatted_args+="\"$params\" "
+                else
+                    formatted_args+="$params "
+                fi
+            fi
+
+            # Add the next flag to the formatted output
+            formatted_args+="$next_flag "
+            raw_args="${raw_args#*$next_flag}"  # Remove the processed segment
+        else
+            # No more flags; treat the remaining raw_args as parameters
+            raw_args="${raw_args#"${raw_args%%[! ]*}"}"  # Trim leading spaces
+            if [[ "$raw_args" == *" "* ]]; then
+                formatted_args+="\"$raw_args\" "
+            else
+                formatted_args+="$raw_args "
+            fi
+            break
+        fi
+    done
+
+    echo "$formatted_args"
+}
 
 cmd="$@"
 
