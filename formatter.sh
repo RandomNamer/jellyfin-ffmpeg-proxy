@@ -23,11 +23,12 @@ format_arguments() {
 
             # Quote the parameters if necessary
             if [[ -n "$params" ]]; then
-                if [[ "$params" == *" "* ]]; then
-                    formatted_args+="\"$params\" "
-                else
-                    formatted_args+="$params "
-                fi
+                # if [[ "$params" == *" "* ]]; then
+                #     formatted_args+="\"$params\" "
+                # else
+                #     formatted_args+="$params "
+                # fi
+                formatted_args+="\"$params\" "
             fi
 
             # Add the next flag to the formatted output

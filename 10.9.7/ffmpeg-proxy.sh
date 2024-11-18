@@ -23,6 +23,8 @@ LINUX_FFMPEG="$SCRIPT_DIR/ffmpeg_original"
 
 LOG_FILE="$SCRIPT_DIR/ffmpeg_calls.log"
 
+MACOS_LOG_FILE="/Users/zzy/Desktop/ffmpeg_call_out.log"
+
 # Below is shared logic
 replace_paths() {
     local cmd="$1"
@@ -93,7 +95,7 @@ execute_macos_ffmpeg() {
     log "Forwarding FFmpeg Command to macOS: $formatted_args"
 
     sshpass -p "$MACOS_PASSWORD" ssh -o StrictHostKeyChecking=no "$MACOS_USER@$MACOS_HOST" \
-        "$MACOS_FFMPEG $formatted_args | tee -a /Users/zzy/Desktop/ffmpeg_call_out.log" \
+        "$MACOS_FFMPEG $formatted_args | tee -a $MACOS_LOG_FILE" \
         1>&1 2>&2
 
     local exit_code=$?
@@ -119,18 +121,19 @@ format_arguments() {
         # Match the next flag
         if [[ "$raw_args" =~ $flag_regex ]]; then
             local next_flag="${BASH_REMATCH[0]}"
-            
+            # echo "Next flag: $next_flag"
             local params="${raw_args%%$next_flag*}"  # Everything before the next flag
             params="${params#"${params%%[! ]*}"}"
             
 
             # Quote the parameters if necessary
             if [[ -n "$params" ]]; then
-                if [[ "$params" == *" "* ]]; then
-                    formatted_args+="\"$params\" "
-                else
-                    formatted_args+="$params "
-                fi
+                # if [[ "$params" == *" "* ]]; then
+                #     formatted_args+="\"$params\" "
+                # else
+                #     formatted_args+="$params "
+                # fi
+                formatted_args+="\"$params\" "
             fi
 
             # Add the next flag to the formatted output
